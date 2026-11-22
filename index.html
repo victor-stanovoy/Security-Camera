@@ -32,7 +32,7 @@ section.pane.on{display:block}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 14px}
 label{display:block;font-size:12px;color:var(--dim);margin-bottom:3px}
 label.inl{display:inline-flex;gap:6px;align-items:center;margin:0}
-input[type=text],input[type=password],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:8px;font:inherit}
+input[type=text],input[type=password],input[type=number],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:8px;font:inherit}
 input[type=range]{width:100%}
 input[type=checkbox]{accent-color:var(--amber)}
 input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
@@ -64,6 +64,32 @@ button.dng{border-color:var(--red);color:var(--red)}
 @media(hover:none){.tile .ctl{opacity:1}}
 .tile .ctl button{background:rgba(0,0,0,.65);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:3px;padding:4px 8px;font:12px var(--sans);cursor:pointer}
 .tile .ctl button.on{background:var(--red);border-color:var(--red)}
+.tile .mbar{position:absolute;left:6px;bottom:6px;display:flex;gap:4px;z-index:2}
+.tile .mbar select{width:auto;padding:3px 4px;font-size:12px;background:rgba(0,0,0,.7);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:3px}
+.tile .mbar button{background:rgba(0,0,0,.7);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:3px;padding:3px 8px;font:13px var(--sans);cursor:pointer}
+.tile .pop{position:absolute;left:6px;bottom:38px;z-index:3;display:none;width:min(270px,calc(100% - 12px));max-height:calc(100% - 46px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px;font-size:12px}
+.tile .pop input[type=text],.tile .pop input[type=number],.tile .pop select{padding:5px}
+.tile .mstat{opacity:.9}
+.tile.mot{outline:3px solid var(--amber);outline-offset:-3px}
+.tile.alm{outline:4px solid var(--red);outline-offset:-4px;animation:almblink 1s steps(2) infinite}
+@keyframes almblink{50%{outline-color:transparent}}
+@media(prefers-reduced-motion:reduce){.tile.alm{animation:none}}
+#alarmBar{display:grid;gap:6px;margin-bottom:8px}
+#alarmBar:empty{display:none}
+.alr{display:flex;gap:10px;align-items:center;justify-content:space-between;background:#3a1417;border:1px solid var(--red);border-radius:4px;padding:8px 10px}
+.alr.off{background:#33280f;border-color:var(--amber)}
+.alr b{color:#fff}
+.gbar{font:13px var(--mono);padding:8px 12px;border-radius:4px;margin-bottom:8px;background:var(--panel2);border:1px solid var(--line)}
+.gbar.motion{border-color:var(--amber);color:var(--amber)}
+.gbar.alarm{border-color:var(--red);color:#fff;background:#3a1417}
+.tiles.guard{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.tiles.guard .tile.focus{grid-column:1/-1;order:-1;justify-self:center;width:min(100%,calc(72vh*16/9));aspect-ratio:16/9}
+.tiles.guard .tile:not(.focus){cursor:pointer}
+.tiles.guard .tile:not(.focus) .ctl,.tiles.guard .tile:not(.focus) .mbar,.tiles.guard .tile:not(.focus) .pop{display:none}
+.tiles.guard .tile:not(.focus) .tag{font-size:10px;padding:1px 5px}
+#stage:fullscreen{background:var(--bg);overflow:auto;padding:10px}
+#stage:-webkit-full-screen{background:var(--bg);overflow:auto;padding:10px}
+#logList div{padding:3px 0;border-bottom:1px solid var(--line)}
 .empty{color:var(--dim);border:1px dashed var(--line);border-radius:6px;padding:30px;text-align:center}
 code,.mono{font-family:var(--mono);font-size:12px}
 ol.steps{margin:0;padding-left:20px;color:var(--dim)}
@@ -204,7 +230,7 @@ details summary{cursor:pointer;color:var(--dim)}
   <div class="box">
     <div class="grid2">
       <div><label for="vwName">Your name (shown in the watermark)</label><input type="text" id="vwName" placeholder="Me"></div>
-      <div><label for="vwCols">Columns</label><select id="vwCols"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+      <div><label for="vwCols">Columns (grid mode)</label><select id="vwCols"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
       <div><label for="vwWmSel">Viewer watermark</label><select id="vwWmSel"><option value="on">On (name + time, tiled)</option><option value="off">Off</option></select></div>
     </div>
     <div class="row" style="margin-top:10px">
@@ -215,8 +241,35 @@ details summary{cursor:pointer;color:var(--dim)}
     </div>
     <div class="status" id="vwStatus"></div>
   </div>
-  <div class="tiles" id="vwTiles"></div>
-  <div class="empty" id="vwEmpty">No cameras yet. Connect, then start cameras on another device in the same room.</div>
+
+  <div class="box">
+    <h2>Monitoring and guard mode</h2>
+    <div class="row">
+      <button class="btn pri" id="guardBtn">Guard mode: Off</button>
+      <button class="btn" id="guardFs">Fullscreen</button>
+      <label class="inl">Seconds per camera <select id="gDwell" style="width:auto"><option>5</option><option>8</option><option>10</option><option>15</option><option>30</option></select></label>
+      <label class="inl">Hold after motion <select id="gHold" style="width:auto"><option>5</option><option>10</option><option>20</option><option>40</option></select> s</label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="inl"><input type="checkbox" id="gMute"> Mute alarms</label>
+      <label class="inl">Volume <input type="range" id="gVol" min="10" max="100" style="width:120px"></label>
+      <button class="btn" id="testSound">Test alarm sound</button>
+    </div>
+    <p class="hint">Use the dropdown at the bottom-left of each camera: <b>Off</b>, <b>Motion alert</b> (alarm when something moves) or <b>Must move</b> (alarm when nothing moves for the set time, like a cell check). In guard mode the view patrols all cameras, jumps to any camera with motion, and locks onto any camera with a no-movement alarm until you acknowledge it. Detection runs in this tab, so keep it open and visible.</p>
+  </div>
+
+  <div id="stage">
+    <div id="guardBar" class="gbar" style="display:none"></div>
+    <div id="alarmBar"></div>
+    <div class="tiles" id="vwTiles"></div>
+    <div class="empty" id="vwEmpty">No cameras yet. Connect, then start cameras on another device in the same room.</div>
+  </div>
+
+  <details class="box" id="logBox" style="margin-top:14px">
+    <summary>Event log (<span id="logN">0</span>)</summary>
+    <div class="row" style="margin:10px 0"><button class="btn" id="logClear">Clear log</button></div>
+    <div id="logList" class="mono"></div>
+  </details>
 </section>
 
 </main>
@@ -257,7 +310,7 @@ function setStatus(el,msg,cls){el.textContent=msg;el.className="status "+(cls||"
 /* ---------- config ---------- */
 const defaults={lkUrl:"",lkRoom:"home",lkKey:"",lkSecret:"",lkToken:"",devName:"Device",appBase:"",
   qRes:"1280x720",qFps:"15",wmText:"",wmPos:"bl",wmOp:"70",wmTime:true,wmName:true,wmTile:false,resume:false,
-  cvKind:"black",cvTitle:"Untitled document",vwName:"",vwCols:"2",vwWmSel:"on",autoView:false,micSel:""};
+  cvKind:"black",cvTitle:"Untitled document",vwName:"",vwCols:"2",vwWmSel:"on",autoView:false,micSel:"",gDwell:"10",gHold:"10",gMute:false,gVol:"70"};
 function loadCfg(){
   for(const [k,d] of Object.entries(defaults)){
     const el=$("#"+k);if(!el)continue;
@@ -348,20 +401,20 @@ function b64u(x){
   let s="";bytes.forEach(b=>s+=String.fromCharCode(b));
   return btoa(s).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
 }
-async function mintToken({identity,name,canPublish,ttl}){
+async function mintToken({identity,name,canPublish,ttl,metadata}){
   const key=$("#lkKey").value.trim(),secret=$("#lkSecret").value.trim(),room=$("#lkRoom").value.trim()||"home";
   if(!(window.crypto&&crypto.subtle))throw new Error("Token signing needs https. Open the published page, not an http:// address.");
   const now=Math.floor(Date.now()/1000);
   const head=b64u({alg:"HS256",typ:"JWT"});
-  const body=b64u({iss:key,sub:identity,name,nbf:now-30,exp:now+(ttl||86400),
+  const body=b64u({iss:key,sub:identity,name,...(metadata?{metadata}:{}),nbf:now-30,exp:now+(ttl||86400),
     video:{room,roomJoin:true,canPublish:!!canPublish,canSubscribe:true,canPublishData:!!canPublish}});
   const enc=new TextEncoder();
   const k=await crypto.subtle.importKey("raw",enc.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
   const sig=new Uint8Array(await crypto.subtle.sign("HMAC",k,enc.encode(head+"."+body)));
   return head+"."+body+"."+b64u(sig);
 }
-async function getToken(identity,name,canPublish){
-  if($("#lkKey").value.trim()&&$("#lkSecret").value.trim())return mintToken({identity,name,canPublish});
+async function getToken(identity,name,canPublish,metadata){
+  if($("#lkKey").value.trim()&&$("#lkSecret").value.trim())return mintToken({identity,name,canPublish,metadata});
   const t=$("#lkToken").value.trim();
   if(t)return t;
   throw new Error("Enter an API key and secret (or a token) in Setup.");
@@ -537,6 +590,22 @@ function drawFrame(ctx,video,w,h,label){
   ctx.restore();
 }
 
+/* where the burned-in timestamp box sits, as fractions of the frame (sent to viewers so motion detection can ignore it) */
+function wmFraction(label,w,h){
+  const c=document.createElement("canvas").getContext("2d");
+  const text=$("#wmText").value.trim(),tiled=$("#wmTile").checked&&text;
+  const fs=Math.max(12,Math.round(h/34));
+  c.font=`${fs}px ui-monospace,Menlo,Consolas,monospace`;
+  const lines=[];
+  if(text&&!tiled)lines.push(text);
+  if($("#wmName").checked)lines.push(label);
+  if($("#wmTime").checked)lines.push(stamp());
+  if(!lines.length)return null;
+  const pos=$("#wmPos").value,p=fs*.8,lh=fs*1.3;
+  const bw=Math.max(...lines.map(l=>c.measureText(l).width))+p*2,bh=lines.length*lh+p;
+  const x=pos.includes("l")?p:w-bw-p,y=pos.includes("t")?p:h-bh-p,m=.02;
+  return [Math.max(0,x/w-m),Math.max(0,y/h-m),Math.min(1,bw/w+2*m),Math.min(1,bh/h+2*m)].map(v=>+v.toFixed(3));
+}
 function persistDesired(){
   store.set("resumeList",[...desired.values()].filter(s=>s.kind==="device").map(s=>({id:s.id,deviceId:s.deviceId,kind:s.kind,label:s.label,mic:!!s.mic})));
 }
@@ -563,7 +632,8 @@ async function startSource(src,withMic){
     const cap=canvas.captureStream(fps);
 
     const identity=(devName.toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,30)||"device")+"-"+hashStr(src.id);
-    const token=await getToken(identity,label,true);
+    const wm=wmFraction(label,vw,vh);
+    const token=await getToken(identity,label,true,wm?JSON.stringify({wm}):undefined);
     room=new LivekitClient.Room();
     await room.connect(url,token);
     await room.localParticipant.publishTrack(cap.getVideoTracks()[0],{
@@ -693,10 +763,241 @@ $("#cover").addEventListener("click",()=>{
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&$("#cover").style.display==="block")leaveLow()});
 
 /* =========================================================
-   VIEWER SIDE
+   VIEWER SIDE: tiles, motion detection, alarms, guard mode
    ========================================================= */
 let vroom=null,viewerManualStop=false,viewerRetry=null;
-const vtiles=new Map();
+const vtiles=new Map();    // track sid -> {tile,track,s}
+const states=new Map();    // participant identity -> camera state
+const alarms=new Map();    // "type:id" -> {type,id,name,since}
+let logs=store.get("log",[]);
+const fmt=ms=>{const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+":"+pad(s%60)};
+
+/* ---------- event log ---------- */
+function log(type,who,msg){
+  const name=typeof who==="string"?who:who.name;
+  logs.unshift({t:Date.now(),type,name,msg});
+  if(logs.length>200)logs.pop();
+  store.set("log",logs.slice(0,100));
+  renderLog();
+}
+function renderLog(){
+  $("#logN").textContent=logs.length;
+  $("#logList").innerHTML=logs.slice(0,100).map(l=>`<div>${esc(stamp(new Date(l.t)))} · ${esc(l.name)} · ${esc(l.msg)}</div>`).join("");
+}
+$("#logClear").onclick=()=>{logs=[];store.set("log",[]);renderLog()};
+renderLog();
+
+/* ---------- sound ---------- */
+let AC=null,master=null;
+function audioInit(){
+  try{
+    if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.connect(AC.destination)}
+    master.gain.value=(+$("#gVol").value)/100;
+    if(AC.state==="suspended")AC.resume();
+  }catch{}
+}
+document.addEventListener("pointerdown",audioInit);
+function beep(freq,dur,delay,type,gain){
+  if(!AC||$("#gMute").checked)return;
+  const t=AC.currentTime+delay,o=AC.createOscillator(),g=AC.createGain(),v=gain||.25;
+  o.type=type||"square";o.frequency.value=freq;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.01);
+  g.gain.setValueAtTime(v,t+dur-.02);g.gain.linearRampToValueAtTime(0,t+dur);
+  o.connect(g);g.connect(master);o.start(t);o.stop(t+dur+.02);
+}
+const sounds={
+  motion(){beep(880,.12,0);beep(1320,.16,.15)},
+  nomove(){for(let i=0;i<4;i++)beep(i%2?660:990,.25,i*.28,"sawtooth",.3)},
+  offline(){beep(330,.45,0,"sawtooth",.3);beep(247,.6,.55,"sawtooth",.3)},
+  link(){beep(440,.3,0,"square");beep(440,.3,.4,"square")}
+};
+function play(type){
+  audioInit();(sounds[type]||sounds.motion)();
+  try{navigator.vibrate&&navigator.vibrate(type==="motion"?[120]:[300,120,300])}catch{}
+}
+$("#gVol").addEventListener("input",()=>{if(master)master.gain.value=(+$("#gVol").value)/100});
+$("#testSound").onclick=()=>play("nomove");
+
+/* ---------- per-camera settings ---------- */
+const camDefaults={mode:"off",sens:6,noMoveSec:60,ignore:"auto",alias:""};
+function camCfg(id){return {...camDefaults,...(store.get("camcfg",{})[id]||{})}}
+function saveCamCfg(id,c){const all=store.get("camcfg",{});all[id]=c;store.set("camcfg",all)}
+
+/* ---------- motion analysis ---------- */
+const AW=80,AH=45,AN=AW*AH;
+const acv=document.createElement("canvas");acv.width=AW;acv.height=AH;
+const actx=acv.getContext("2d",{willReadFrequently:true});
+function ignoreRect(s){
+  const ig=s.cfg.ignore;
+  if(ig==="none")return null;
+  if(ig==="auto")return s.wm||null;
+  const w=.4,h=.22;
+  return ({tl:[0,0,w,h],tr:[1-w,0,w,h],bl:[0,1-h,w,h],br:[1-w,1-h,w,h]})[ig]||null;
+}
+function buildIgnore(s){
+  const m=new Uint8Array(AN),r=ignoreRect(s);
+  if(r){
+    const x0=Math.max(0,Math.floor(r[0]*AW)),y0=Math.max(0,Math.floor(r[1]*AH));
+    const x1=Math.min(AW,Math.ceil((r[0]+r[2])*AW)),y1=Math.min(AH,Math.ceil((r[1]+r[3])*AH));
+    for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++)m[y*AW+x]=1;
+  }
+  s.ignoreMask=m;
+}
+function analyse(s,now){
+  const v=s.video;
+  if(!v.videoWidth||v.readyState<2)return;
+  actx.drawImage(v,0,0,AW,AH);
+  const d=actx.getImageData(0,0,AW,AH).data;
+  const g=new Uint8Array(AN);let sum=0;
+  for(let i=0,j=0;i<AN;i++,j+=4){const y=(d[j]*77+d[j+1]*150+d[j+2]*29)>>8;g[i]=y;sum+=y}
+  const mean=sum/AN;
+  if(!s.prev){s.prev=g;s.prevMean=mean;s.armedAt=now;return}
+  const shift=mean-s.prevMean,thr=34-2*s.cfg.sens;
+  let ch=0,cnt=0;const mask=s.diffMask;
+  for(let i=0;i<AN;i++){
+    if(s.ignoreMask[i]){mask[i]=0;continue}
+    cnt++;
+    if(Math.abs(g[i]-s.prev[i]-shift)>thr){ch++;mask[i]=1}else mask[i]=0;
+  }
+  s.prev=g;s.prevMean=mean;
+  s.ratio=cnt?ch/cnt:0;
+  s.need=0.06*Math.pow(.7,s.cfg.sens-1);
+  s.streak=s.ratio>=s.need?s.streak+1:0;
+  if(s.streak>=2)onMotion(s,now);
+}
+function onMotion(s,now){
+  const was=now-s.lastMotion<2500;
+  s.lastMotion=now;
+  if(s.cfg.mode==="must"){
+    if(alarms.delete("nomove:"+s.id)){log("ok",s,"Movement resumed");renderAlarms()}
+    return;
+  }
+  if(!was){
+    log("motion",s,"Motion detected");
+    if(now-s.lastSound>8000){s.lastSound=now;play("motion")}
+  }
+}
+function drawDbg(s){
+  const c=s.dbg,x=c.getContext("2d"),im=x.createImageData(AW,AH);
+  for(let i=0;i<AN;i++){
+    const o=i*4,on=s.diffMask[i],ig=s.ignoreMask[i];
+    im.data[o]=on?240:ig?70:22;im.data[o+1]=on?166:ig?70:22;im.data[o+2]=on?58:ig?110:22;im.data[o+3]=255;
+  }
+  x.putImageData(im,0,0);
+  s.dbgText.textContent=`${(s.ratio*100).toFixed(2)}% changed (alarm level ${(s.need*100).toFixed(2)}%). Blue = ignored area.`;
+}
+
+/* ---------- alarms ---------- */
+function renderAlarms(){
+  const bar=$("#alarmBar");bar.innerHTML="";
+  const now=Date.now(),order={nomove:0,offline:1,link:2};
+  const names={nomove:"NO MOVEMENT",offline:"CAMERA OFFLINE",link:"CONNECTION LOST"};
+  [...alarms.values()].sort((a,b)=>order[a.type]-order[b.type]).forEach(a=>{
+    const div=document.createElement("div");div.className="alr"+(a.type==="nomove"?"":" off");
+    div.innerHTML=`<span><b>${names[a.type]}</b> · ${esc(a.name)} · ${fmt(now-a.since)}</span>`;
+    const b=document.createElement("button");b.className="btn";b.textContent="Acknowledge";b.onclick=()=>ack(a);
+    div.appendChild(b);bar.appendChild(div);
+  });
+  if(alarms.size>1){
+    const b=document.createElement("button");b.className="btn";b.textContent="Acknowledge all";
+    b.onclick=()=>[...alarms.values()].forEach(ack);bar.appendChild(b);
+  }
+  states.forEach(s=>s.tile.classList.toggle("alm",alarms.has("nomove:"+s.id)));
+  document.title=alarms.size?"⚠ ALARM · SecureCam":origTitle;
+}
+function ack(a){
+  alarms.delete(a.type+":"+a.id);
+  const s=states.get(a.id);
+  if(s&&a.type==="nomove")s.armedAt=Date.now();
+  log("ack",a.name,"Acknowledged: "+a.type);
+  renderAlarms();
+}
+
+/* ---------- monitor loop (runs in a worker timer so it keeps going in the background) ---------- */
+let lastRender=0,lastRepeat=0;
+function monitorTick(){
+  const now=Date.now();
+  for(const s of states.values()){
+    const v=s.video;
+    if(v.currentTime!==s.lastCT){s.lastCT=v.currentTime;s.lastFrameAt=now}
+    s.stalled=now-s.lastFrameAt>4000;
+    const mode=s.cfg.mode;
+    if(mode==="off"){s.mstat.textContent="";s.tile.classList.remove("mot");continue}
+    if(s.stalled){s.prev=null;s.armedAt=now}else analyse(s,now);
+    if(mode==="must"&&!s.stalled){
+      const ref=Math.max(s.lastMotion,s.armedAt);
+      if(!alarms.has("nomove:"+s.id)&&now-ref>s.cfg.noMoveSec*1000){
+        alarms.set("nomove:"+s.id,{type:"nomove",id:s.id,name:s.name,since:now});
+        log("alarm",s,`No movement for ${s.cfg.noMoveSec}s`);
+        play("nomove");renderAlarms();
+      }
+    }
+    s.tile.classList.toggle("mot",mode==="alert"&&now-s.lastMotion<2500);
+    if(s.stalled)s.mstat.textContent="no signal";
+    else if(mode==="alert")s.mstat.textContent=now-s.lastMotion<2500?"MOTION":"watching";
+    else s.mstat.textContent=`still ${fmt(now-Math.max(s.lastMotion,s.armedAt))} / ${fmt(s.cfg.noMoveSec*1000)}`;
+    if(s.pop.style.display==="block")drawDbg(s);
+  }
+  if(alarms.size){
+    if(now-lastRender>1000){lastRender=now;renderAlarms()}
+    if(now-lastRepeat>5000){
+      lastRepeat=now;
+      const types=[...alarms.values()].map(a=>a.type);
+      play(types.includes("nomove")?"nomove":types.includes("offline")?"offline":"link");
+    }
+  }
+  guardTick(now);
+}
+makeTicker(monitorTick,250);
+
+/* ---------- guard mode ---------- */
+const G={on:false,focus:null,lastSwitch:0,pinned:null,pinUntil:0};
+function guardTick(now){
+  const bar=$("#guardBar");
+  if(!G.on){bar.style.display="none";return}
+  bar.style.display="block";
+  const list=[...states.values()];
+  if(!list.length){bar.className="gbar";bar.textContent="GUARD · waiting for cameras";return}
+  const dwell=+$("#gDwell").value*1000,hold=+$("#gHold").value*1000;
+  const pick=arr=>{
+    const cur=arr.find(s=>s.id===G.focus);
+    if(cur&&(arr.length===1||now-G.lastSwitch<dwell))return cur;
+    const i=arr.findIndex(s=>s.id===G.focus);
+    const nxt=arr[(i+1)%arr.length];
+    if(nxt.id!==G.focus)G.lastSwitch=now;
+    return nxt;
+  };
+  const alarmed=list.filter(s=>alarms.has("nomove:"+s.id));
+  const pinned=G.pinned&&now<G.pinUntil?states.get(G.pinned):null;
+  const moving=list.filter(s=>s.cfg.mode==="alert"&&s.lastMotion&&now-s.lastMotion<hold);
+  let sel,reason="patrol";
+  if(alarmed.length){sel=pick(alarmed);reason="alarm"}
+  else if(pinned){sel=pinned;reason="pinned";if(G.focus!==pinned.id)G.lastSwitch=now}
+  else if(moving.length){sel=pick(moving);reason="motion"}
+  else sel=pick(list);
+  G.focus=sel.id;
+  list.forEach(s=>s.tile.classList.toggle("focus",s===sel));
+  const left=Math.max(0,Math.ceil((dwell-(now-G.lastSwitch))/1000));
+  const label={alarm:"NO MOVEMENT",motion:"MOTION",pinned:"PINNED",patrol:"PATROL"}[reason];
+  bar.className="gbar "+(reason==="alarm"?"alarm":reason==="motion"?"motion":"");
+  bar.textContent=`GUARD · ${label} · ${sel.name}`
+    +(reason==="patrol"&&list.length>1?` · next in ${left}s`:"")
+    +(reason==="pinned"?` · resumes in ${Math.ceil((G.pinUntil-now)/1000)}s`:"");
+}
+function setGuard(on){
+  G.on=on;store.set("guardOn",on);
+  $("#guardBtn").textContent="Guard mode: "+(on?"On":"Off");
+  $("#vwTiles").classList.toggle("guard",on);
+  if(!on)states.forEach(s=>s.tile.classList.remove("focus"));
+  guardTick(Date.now());
+}
+$("#guardBtn").onclick=()=>{audioInit();setGuard(!G.on)};
+$("#guardFs").onclick=()=>{
+  const st=$("#stage"),f=st.requestFullscreen||st.webkitRequestFullscreen;
+  if(f)f.call(st);
+};
+
+/* ---------- viewer watermark and layout ---------- */
 function wmPattern(text){
   const svg=`<svg xmlns='http://www.w3.org/2000/svg' width='300' height='150'><text x='20' y='85' transform='rotate(-18 150 75)' fill='white' fill-opacity='0.22' stroke='black' stroke-opacity='0.12' font-family='monospace' font-size='13'>${esc(text)}</text></svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
@@ -711,8 +1012,16 @@ function refreshCount(){
   $("#vwCount").textContent=vtiles.size;
   $("#vwEmpty").style.display=vtiles.size?"none":"block";
 }
+
+/* ---------- tiles ---------- */
 function addViewTile(track,pub,participant){
   if(vtiles.has(track.sid))return;
+  const id=participant.identity;
+  for(const [sid,t] of vtiles)if(t.s&&t.s.id===id){removeViewTile(sid,true);break}
+  const cfg=camCfg(id);
+  const name=cfg.alias||participant.name||id;
+  if(alarms.delete("offline:"+id)){log("ok",name,"Camera back online");renderAlarms()}
+
   const tile=document.createElement("div");tile.className="tile";
   const v=track.attach();v.muted=true;v.playsInline=true;v.autoplay=true;
   tile.appendChild(v);
@@ -720,32 +1029,74 @@ function addViewTile(track,pub,participant){
   if($("#vwWmSel").value==="on")wm.style.backgroundImage=wmPattern(viewerWmText());
   tile.appendChild(wm);
   const tag=document.createElement("div");tag.className="tag";
-  tag.innerHTML=`<span class="dot live"></span><span>${esc(participant.name||participant.identity)}</span>`;
+  tag.innerHTML=`<span class="dot live"></span><span class="nm1">${esc(name)}</span><span class="mstat"></span>`;
   tile.appendChild(tag);
+
+  let wmRect=null;
+  try{const md=JSON.parse(participant.metadata||"{}");if(Array.isArray(md.wm))wmRect=md.wm}catch{}
+  const now=Date.now();
+  const s={id,name,cfg,video:v,tile,wm:wmRect,mstat:tag.querySelector(".mstat"),
+    prev:null,prevMean:0,streak:0,lastMotion:0,armedAt:now,lastSound:0,lastCT:-1,lastFrameAt:now,
+    stalled:false,ratio:0,need:0,diffMask:new Uint8Array(AN),ignoreMask:null};
+  buildIgnore(s);
+
+  /* motion mode bar and settings popover */
+  const mbar=document.createElement("div");mbar.className="mbar";
+  const sel=document.createElement("select");
+  sel.setAttribute("aria-label","Motion mode for "+name);
+  sel.innerHTML='<option value="off">Motion: Off</option><option value="alert">Motion alert</option><option value="must">Must move</option>';
+  sel.value=cfg.mode;
+  const gear=document.createElement("button");gear.textContent="⚙";gear.title="Camera settings";gear.setAttribute("aria-label","Camera settings");
+  mbar.appendChild(sel);mbar.appendChild(gear);tile.appendChild(mbar);
+  const pop=document.createElement("div");pop.className="pop";
+  pop.innerHTML=`
+    <label>Label (for example Cell 3)</label><input type="text" class="alias" value="${esc(cfg.alias)}" placeholder="${esc(participant.name||id)}">
+    <label style="margin-top:8px">Sensitivity <b class="sv">${cfg.sens}</b>/10</label><input type="range" class="sens" min="1" max="10" value="${cfg.sens}">
+    <label style="margin-top:8px">Must move: alarm after this many seconds without movement</label><input type="number" class="nm" min="5" max="3600" value="${cfg.noMoveSec}">
+    <label style="margin-top:8px">Ignore the camera's burned-in timestamp</label>
+    <select class="ign"><option value="auto">Automatic</option><option value="none">Do not ignore</option><option value="tl">Top left</option><option value="tr">Top right</option><option value="bl">Bottom left</option><option value="br">Bottom right</option></select>
+    <canvas class="dbg" width="${AW}" height="${AH}" style="width:100%;margin-top:8px;background:#000;border-radius:3px"></canvas><div class="dbgt mono"></div>`;
+  tile.appendChild(pop);
+  s.pop=pop;s.dbg=pop.querySelector(".dbg");s.dbgText=pop.querySelector(".dbgt");
+  pop.querySelector(".ign").value=cfg.ignore;
+  const save=()=>saveCamCfg(id,s.cfg);
+  const reset=()=>{s.prev=null;s.streak=0;s.lastMotion=0;s.armedAt=Date.now();if(alarms.delete("nomove:"+id))renderAlarms()};
+  [mbar,pop].forEach(e=>{e.addEventListener("click",ev=>ev.stopPropagation());e.addEventListener("dblclick",ev=>ev.stopPropagation())});
+  sel.onchange=()=>{s.cfg.mode=sel.value;save();reset();log("info",s,"Motion mode: "+sel.options[sel.selectedIndex].text)};
+  gear.onclick=()=>{pop.style.display=pop.style.display==="block"?"none":"block"};
+  pop.querySelector(".alias").onchange=e=>{
+    s.cfg.alias=e.target.value.trim();s.name=s.cfg.alias||participant.name||id;
+    tag.querySelector(".nm1").textContent=s.name;save();
+  };
+  pop.querySelector(".sens").oninput=e=>{s.cfg.sens=+e.target.value;pop.querySelector(".sv").textContent=e.target.value;save()};
+  pop.querySelector(".nm").onchange=e=>{s.cfg.noMoveSec=Math.min(3600,Math.max(5,+e.target.value||60));e.target.value=s.cfg.noMoveSec;save();s.armedAt=Date.now()};
+  pop.querySelector(".ign").onchange=e=>{s.cfg.ignore=e.target.value;save();buildIgnore(s);reset()};
+
+  /* controls */
   const ctl=document.createElement("div");ctl.className="ctl";
-  const mk=(t,fn)=>{const b=document.createElement("button");b.textContent=t;b.onclick=()=>fn(b);ctl.appendChild(b);return b};
+  const mk=(t,fn)=>{const b=document.createElement("button");b.textContent=t;b.onclick=ev=>{ev.stopPropagation();fn(b)};ctl.appendChild(b);return b};
   mk("Full",()=>{const f=tile.requestFullscreen||tile.webkitRequestFullscreen;if(f)f.call(tile);else if(v.webkitEnterFullscreen)v.webkitEnterFullscreen()});
   mk("Snapshot",()=>{
     if(!v.videoWidth)return;
     const c=document.createElement("canvas");c.width=v.videoWidth;c.height=v.videoHeight;
     const x=c.getContext("2d");x.drawImage(v,0,0);
     x.font=`${Math.max(12,c.height/40)}px monospace`;x.fillStyle="rgba(255,255,255,.85)";x.strokeStyle="rgba(0,0,0,.6)";
-    const t=`${participant.name||participant.identity} · ${stamp()}`;x.strokeText(t,12,c.height-14);x.fillText(t,12,c.height-14);
+    const t=`${s.name} · ${stamp()}`;x.strokeText(t,12,c.height-14);x.fillText(t,12,c.height-14);
     const a=document.createElement("a");a.href=c.toDataURL("image/png");
-    a.download=`snapshot-${participant.identity||"cam"}-${Date.now()}.png`;a.click();
+    a.download=`snapshot-${id}-${Date.now()}.png`;a.click();
   });
   let rec=null,chunks=[];
   mk("Record",b=>{
     if(rec){rec.stop();return}
-    const s=v.captureStream?v.captureStream():null;
-    if(!s||!window.MediaRecorder){alert("Recording is not supported in this browser.");return}
+    const st=v.captureStream?v.captureStream():null;
+    if(!st||!window.MediaRecorder){alert("Recording is not supported in this browser.");return}
     chunks=[];
     const mt=MediaRecorder.isTypeSupported("video/webm;codecs=vp9")?"video/webm;codecs=vp9":(MediaRecorder.isTypeSupported("video/webm")?"video/webm":"");
-    rec=new MediaRecorder(s,mt?{mimeType:mt}:undefined);
+    rec=new MediaRecorder(st,mt?{mimeType:mt}:undefined);
     rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
     rec.onstop=()=>{
       const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(chunks,{type:rec.mimeType||"video/webm"}));
-      a.download=`rec-${participant.identity}-${Date.now()}.webm`;a.click();
+      a.download=`rec-${id}-${Date.now()}.webm`;a.click();
       rec=null;b.textContent="Record";b.classList.remove("on");
     };
     rec.start(1000);b.textContent="Stop rec";b.classList.add("on");
@@ -760,20 +1111,41 @@ function addViewTile(track,pub,participant){
     });
   }
   tile.appendChild(ctl);
+
+  /* in guard mode, tapping a thumbnail pins it for 30 seconds */
+  tile.addEventListener("click",()=>{
+    if(G.on&&!tile.classList.contains("focus")){G.pinned=id;G.pinUntil=Date.now()+30000}
+  });
+
   $("#vwTiles").appendChild(tile);
-  vtiles.set(track.sid,{tile,track});
+  vtiles.set(track.sid,{tile,track,s});
+  states.set(id,s);
   refreshCount();
 }
-function removeViewTile(sid){
+function removeViewTile(sid,silent){
   const t=vtiles.get(sid);if(!t)return;
   try{t.track.detach()}catch{}
-  t.tile.remove();vtiles.delete(sid);refreshCount();
+  const s=t.s;
+  t.tile.remove();vtiles.delete(sid);
+  if(s){
+    states.delete(s.id);
+    if(G.focus===s.id)G.focus=null;
+    alarms.delete("nomove:"+s.id);
+    if(!silent&&s.cfg.mode!=="off"){
+      alarms.set("offline:"+s.id,{type:"offline",id:s.id,name:s.name,since:Date.now()});
+      log("alarm",s,"Camera went offline");play("offline");
+    }
+    renderAlarms();
+  }
+  refreshCount();
 }
+
+/* ---------- connection ---------- */
 async function connectViewer(){
   const st=$("#vwStatus");
   clearTimeout(viewerRetry);viewerManualStop=false;
   try{
-    needLK();const url=needUrl();saveCfg();
+    needLK();const url=needUrl();saveCfg();audioInit();
     if(vroom){viewerManualStop=true;await vroom.disconnect();vroom=null;viewerManualStop=false}
     setStatus(st,"Connecting…");
     const token=await getToken("viewer-"+rand(),$("#vwName").value.trim()||"Viewer",false);
@@ -782,15 +1154,20 @@ async function connectViewer(){
     room.on(E.TrackSubscribed,(track,pub,p)=>{if(track.kind==="video")addViewTile(track,pub,p)});
     room.on(E.TrackUnsubscribed,track=>removeViewTile(track.sid));
     room.on(E.Disconnected,()=>{
-      [...vtiles.keys()].forEach(removeViewTile);
+      [...vtiles.keys()].forEach(k=>removeViewTile(k,true));
       if(viewerManualStop)return;
       setStatus(st,"Disconnected, retrying…","err");
+      if(!alarms.has("link:self")){
+        alarms.set("link:self",{type:"link",id:"self",name:"This viewer",since:Date.now()});
+        log("alarm","This viewer","Connection to the server was lost");play("link");renderAlarms();
+      }
       if($("#autoView").checked)viewerRetry=setTimeout(connectViewer,5000);
     });
     room.on(E.Reconnecting,()=>setStatus(st,"Reconnecting…"));
     room.on(E.Reconnected,()=>setStatus(st,"Connected","ok"));
     await room.connect(url,token);
     vroom=room;
+    if(alarms.delete("link:self")){log("ok","This viewer","Connection restored");renderAlarms()}
     setStatus(st,`Connected to room "${room.name}"`,"ok");
   }catch(e){
     setStatus(st,e.message||String(e),"err");
@@ -801,10 +1178,12 @@ $("#vwConnect").onclick=connectViewer;
 $("#vwDisconnect").onclick=async()=>{
   clearTimeout(viewerRetry);viewerManualStop=true;
   if(vroom){await vroom.disconnect();vroom=null}
-  [...vtiles.keys()].forEach(removeViewTile);
+  [...vtiles.keys()].forEach(k=>removeViewTile(k,true));
+  alarms.delete("link:self");renderAlarms();
   setStatus($("#vwStatus"),"Disconnected");
 };
 refreshCount();
+setGuard(store.get("guardOn",false));
 
 /* ---------- startup ---------- */
 (function init(){
