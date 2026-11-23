@@ -90,6 +90,15 @@ button.dng{border-color:var(--red);color:var(--red)}
 #stage:fullscreen{background:var(--bg);overflow:auto;padding:10px}
 #stage:-webkit-full-screen{background:var(--bg);overflow:auto;padding:10px}
 #logList div{padding:3px 0;border-bottom:1px solid var(--line)}
+.micview{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--dim);background:#0b0e10}
+.micicon{font-size:34px}
+.meter{width:70%;height:10px;background:#222a30;border-radius:5px;overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--ok);transition:width .1s}
+.mtxt{font:12px var(--mono);text-align:center;padding:0 10px}
+#talkBanner{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:50;background:var(--red);color:#fff;padding:8px 14px;border-radius:6px;font-weight:600}
+.btn.talkbtn.on{background:var(--red);border-color:var(--red);color:#fff}
+.tile .ctl button.talkbtn{touch-action:none}
+.btn.talkbtn{touch-action:none;user-select:none;-webkit-user-select:none}
 .empty{color:var(--dim);border:1px dashed var(--line);border-radius:6px;padding:30px;text-align:center}
 code,.mono{font-family:var(--mono);font-size:12px}
 ol.steps{margin:0;padding-left:20px;color:var(--dim)}
@@ -152,6 +161,9 @@ details summary{cursor:pointer;color:var(--dim)}
     <p class="hint" style="margin-top:0">Open the app on the other device with one link or QR code and it is set up already.</p>
     <div style="margin-top:10px"><label for="appBase">Address of this app</label><input type="text" id="appBase" placeholder="https://your-name.github.io/securecam/" autocapitalize="off" spellcheck="false"></div>
     <div class="row" style="margin-top:10px">
+      <label class="inl"><input type="checkbox" id="linkTalk"> Let viewers of this link talk through the intercom (microphone only)</label>
+    </div>
+    <div class="row" style="margin-top:10px">
       <button class="btn" id="mkViewer">Viewer link (view only)</button>
       <button class="btn" id="mkDevice">Full device link (camera + viewer)</button>
     </div>
@@ -181,8 +193,11 @@ details summary{cursor:pointer;color:var(--dim)}
       <button class="btn" id="addScreen">Add screen capture</button>
     </div>
     <div class="devs" id="vidList"><div class="empty">Press “Detect cameras” and allow camera access.</div></div>
-    <div style="margin-top:10px" class="grid2">
-      <div><label for="micSel">Microphone (sent with the first camera)</label><select id="micSel"><option value="">None</option></select></div>
+    <p class="hint">Microphones (🎤) appear in the list above. Tick the ones you want to send. Each microphone is its own stream, so it keeps working when cameras start or stop.</p>
+    <div class="row" style="margin-top:10px">
+      <label class="inl"><input type="checkbox" id="aEcho"> Echo cancellation (keep on for the intercom)</label>
+      <label class="inl"><input type="checkbox" id="aNoise"> Noise suppression</label>
+      <label class="inl"><input type="checkbox" id="aAgc"> Auto volume</label>
     </div>
   </div>
 
@@ -222,6 +237,7 @@ details summary{cursor:pointer;color:var(--dim)}
     <button class="btn" id="goLow">Low-profile mode</button>
   </div>
   <div class="status" id="camStatus"></div>
+  <div class="status" id="icStatus"></div>
   <div class="tiles" id="camTiles" style="margin-top:10px"></div>
 </section>
 
@@ -255,7 +271,13 @@ details summary{cursor:pointer;color:var(--dim)}
       <label class="inl">Volume <input type="range" id="gVol" min="10" max="100" style="width:120px"></label>
       <button class="btn" id="testSound">Test alarm sound</button>
     </div>
-    <p class="hint">Use the dropdown at the bottom-left of each camera: <b>Off</b>, <b>Motion alert</b> (alarm when something moves) or <b>Must move</b> (alarm when nothing moves for the set time, like a cell check). In guard mode the view patrols all cameras, jumps to any camera with motion, and locks onto any camera with a no-movement alarm until you acknowledge it. Detection runs in this tab, so keep it open and visible.</p>
+    <div class="row" style="margin-top:10px">
+      <button class="btn pri" id="talkBtn">Hold to talk to the focused camera</button>
+      <button class="btn" id="talkAll">Hold to talk to all</button>
+      <label class="inl"><input type="checkbox" id="talkLatch"> Tap to start and stop instead of holding</label>
+      <label class="inl"><input type="checkbox" id="gListen"> In guard mode, listen to the focused camera</label>
+    </div>
+    <p class="hint">Use the dropdown at the bottom-left of each camera: <b>Off</b>, <b>Motion alert</b> (alarm when something moves) or <b>Must move</b> (alarm when nothing moves for the set time, like a cell check). In guard mode the view patrols all cameras, jumps to any camera with motion, and locks onto any camera with a no-movement alarm until you acknowledge it. Detection runs in this tab, so keep it open and visible. Intercom: hold <b>Talk</b> on a camera (or hold <b>Space</b> in guard mode) and the guard's voice plays from that device's speaker.</p>
   </div>
 
   <div id="stage">
@@ -273,6 +295,7 @@ details summary{cursor:pointer;color:var(--dim)}
 </section>
 
 </main>
+<div id="talkBanner" role="status" style="display:none"></div>
 <div id="cover"></div>
 
 <script>
@@ -310,7 +333,7 @@ function setStatus(el,msg,cls){el.textContent=msg;el.className="status "+(cls||"
 /* ---------- config ---------- */
 const defaults={lkUrl:"",lkRoom:"home",lkKey:"",lkSecret:"",lkToken:"",devName:"Device",appBase:"",
   qRes:"1280x720",qFps:"15",wmText:"",wmPos:"bl",wmOp:"70",wmTime:true,wmName:true,wmTile:false,resume:false,
-  cvKind:"black",cvTitle:"Untitled document",vwName:"",vwCols:"2",vwWmSel:"on",autoView:false,micSel:"",gDwell:"10",gHold:"10",gMute:false,gVol:"70"};
+  cvKind:"black",cvTitle:"Untitled document",vwName:"",vwCols:"2",vwWmSel:"on",autoView:false,micSel:"",gDwell:"10",gHold:"10",gMute:false,gVol:"70",aEcho:true,aNoise:false,aAgc:true,linkTalk:true,gListen:false,talkLatch:false};
 function loadCfg(){
   for(const [k,d] of Object.entries(defaults)){
     const el=$("#"+k);if(!el)continue;
@@ -401,20 +424,20 @@ function b64u(x){
   let s="";bytes.forEach(b=>s+=String.fromCharCode(b));
   return btoa(s).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
 }
-async function mintToken({identity,name,canPublish,ttl,metadata}){
+async function mintToken({identity,name,canPublish,ttl,metadata,talk}){
   const key=$("#lkKey").value.trim(),secret=$("#lkSecret").value.trim(),room=$("#lkRoom").value.trim()||"home";
   if(!(window.crypto&&crypto.subtle))throw new Error("Token signing needs https. Open the published page, not an http:// address.");
   const now=Math.floor(Date.now()/1000);
   const head=b64u({alg:"HS256",typ:"JWT"});
   const body=b64u({iss:key,sub:identity,name,...(metadata?{metadata}:{}),nbf:now-30,exp:now+(ttl||86400),
-    video:{room,roomJoin:true,canPublish:!!canPublish,canSubscribe:true,canPublishData:!!canPublish}});
+    video:{room,roomJoin:true,canPublish:!!(canPublish||talk),canSubscribe:true,canPublishData:!!(canPublish||talk),...(talk&&!canPublish?{canPublishSources:["microphone"]}:{})}});
   const enc=new TextEncoder();
   const k=await crypto.subtle.importKey("raw",enc.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
   const sig=new Uint8Array(await crypto.subtle.sign("HMAC",k,enc.encode(head+"."+body)));
   return head+"."+body+"."+b64u(sig);
 }
-async function getToken(identity,name,canPublish,metadata){
-  if($("#lkKey").value.trim()&&$("#lkSecret").value.trim())return mintToken({identity,name,canPublish,metadata});
+async function getToken(identity,name,canPublish,metadata,talk){
+  if($("#lkKey").value.trim()&&$("#lkSecret").value.trim())return mintToken({identity,name,canPublish,metadata,talk});
   const t=$("#lkToken").value.trim();
   if(t)return t;
   throw new Error("Enter an API key and secret (or a token) in Setup.");
@@ -448,7 +471,7 @@ async function makeLink(full){
     if(!k||!s)throw new Error("The full device link needs the API key and secret.");
     cfg={u:url,r:room,k,s,m:"d"};
   }else{
-    const t=await mintToken({identity:"viewer-"+rand(),name:"Viewer",canPublish:false,ttl:30*86400});
+    const t=await mintToken({identity:"viewer-"+rand(),name:"Viewer",canPublish:false,talk:$("#linkTalk").checked,ttl:30*86400});
     cfg={u:url,r:room,t,m:"v"};
   }
   return base.split("#")[0]+"#cfg="+encCfg(cfg);
@@ -502,42 +525,45 @@ let linkMode=null;
 })();
 
 /* =========================================================
-   CAMERA SIDE
+   CAMERA SIDE: cameras, microphones, intercom receiver
    ========================================================= */
-const cams=new Map();        // id -> running entry
-const desired=new Map();     // id -> src that should be running (for auto-restart)
+const cams=new Map();        // source id -> running entry
+const desired=new Map();     // source id -> src that should be running (auto-restart)
 const extraSources=[];
 let screenCount=0,wakeLock=null;
+const devSlug=()=>($("#devName").value.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,30)||"device");
 
 async function listDevices(){
+  const st=$("#camStatus");
   if(!navigator.mediaDevices){
-    setStatus($("#camStatus"),"Camera access needs https. Open the published page.","err");return;
+    setStatus(st,"Camera and microphone access needs https. Open the published page.","err");return;
   }
-  try{
-    let s;
-    try{s=await navigator.mediaDevices.getUserMedia({video:true,audio:true})}
-    catch{s=await navigator.mediaDevices.getUserMedia({video:true})}
-    s.getTracks().forEach(t=>t.stop());
-  }catch(e){
-    setStatus($("#camStatus"),"Camera permission was denied. Allow it in the browser's address bar, then press Detect cameras.","err");
+  let perm=null,denied=false;
+  try{perm=await navigator.mediaDevices.getUserMedia({video:true,audio:true})}
+  catch{
+    try{perm=await navigator.mediaDevices.getUserMedia({video:true})}
+    catch{
+      try{perm=await navigator.mediaDevices.getUserMedia({audio:true})}
+      catch{denied=true}
+    }
   }
+  if(perm)perm.getTracks().forEach(t=>t.stop());
+  if(denied)setStatus(st,"Camera and microphone permission was denied. Allow it in the browser's address bar, then press Detect cameras.","err");
   const devs=await navigator.mediaDevices.enumerateDevices();
   devsLoaded=true;
   const vids=devs.filter(d=>d.kind==="videoinput"&&d.deviceId);
-  const mics=devs.filter(d=>d.kind==="audioinput"&&d.deviceId);
+  const mics=devs.filter(d=>d.kind==="audioinput"&&d.deviceId&&d.deviceId!=="communications");
   const list=$("#vidList");list.innerHTML="";
   vids.forEach((d,i)=>addDevRow({id:"dev:"+d.deviceId,deviceId:d.deviceId,kind:"device",label:d.label||("Camera "+(i+1))}));
+  mics.forEach((d,i)=>addDevRow({id:"mic:"+d.deviceId,deviceId:d.deviceId,kind:"mic",label:d.label||("Microphone "+(i+1))}));
   extraSources.forEach(addDevRow);
-  if(!list.children.length)list.innerHTML='<div class="empty">No cameras found.</div>';
-  const ms=$("#micSel"),prev=store.get("micSel","");
-  ms.innerHTML='<option value="">None</option>'+mics.map((d,i)=>`<option value="${esc(d.deviceId)}">${esc(d.label||"Microphone "+(i+1))}</option>`).join("");
-  ms.value=prev;if(ms.value!==prev)ms.value="";
+  if(!list.children.length)list.innerHTML='<div class="empty">No cameras or microphones found.</div>';
 }
 function addDevRow(src){
   const list=$("#vidList");
   const e=list.querySelector(".empty");if(e)e.remove();
   const row=document.createElement("label");row.className="dev";
-  row.innerHTML=`<input type="checkbox" data-id="${esc(src.id)}"><span>${esc(src.label)}</span>`;
+  row.innerHTML=`<input type="checkbox" data-id="${esc(src.id)}"><span>${src.kind==="mic"?"🎤 ":""}${esc(src.label)}</span>`;
   row.querySelector("input").checked=cams.has(src.id)||desired.has(src.id);
   row._src=src;list.appendChild(row);
 }
@@ -606,50 +632,162 @@ function wmFraction(label,w,h){
   const x=pos.includes("l")?p:w-bw-p,y=pos.includes("t")?p:h-bh-p,m=.02;
   return [Math.max(0,x/w-m),Math.max(0,y/h-m),Math.min(1,bw/w+2*m),Math.min(1,bh/h+2*m)].map(v=>+v.toFixed(3));
 }
-function persistDesired(){
-  store.set("resumeList",[...desired.values()].filter(s=>s.kind==="device").map(s=>({id:s.id,deviceId:s.deviceId,kind:s.kind,label:s.label,mic:!!s.mic})));
+
+/* level meter for a local audio stream (also proves the microphone is really delivering sound) */
+function makeMeter(stream,onLevel){
+  let ac,an,buf;
+  try{
+    ac=new (window.AudioContext||window.webkitAudioContext)();
+    const src=ac.createMediaStreamSource(stream);
+    an=ac.createAnalyser();an.fftSize=1024;src.connect(an);
+    buf=new Uint8Array(an.fftSize);
+  }catch{return()=>{}}
+  const stop=makeTicker(()=>{
+    if(ac.state==="suspended")ac.resume().catch(()=>{});
+    an.getByteTimeDomainData(buf);
+    let sum=0;for(let i=0;i<buf.length;i++){const v=(buf[i]-128)/128;sum+=v*v}
+    onLevel(Math.sqrt(sum/buf.length));
+  },100);
+  return()=>{stop();try{ac.close()}catch{}};
 }
-async function startSource(src,withMic){
+
+/* ---------- intercom receiver: guards can speak through this device's speaker ---------- */
+const talkEls=new Map();   // viewer identity -> {el,track,room}
+const talkWant=new Map();  // viewer identity -> {on,name,timer}
+const hostRoom=()=>{const e=cams.values().next().value;return e?e.room:null};
+const isTalk=pub=>pub&&pub.kind==="audio"&&pub.trackName==="talk";
+function setTalkBanner(){
+  const on=[...talkWant.values()].find(w=>w.on);
+  const b=$("#talkBanner");
+  b.style.display=on?"block":"none";
+  if(on)b.textContent="📢 "+on.name+" is speaking";
+}
+function talkAttach(room,track,p){
+  if(talkEls.has(p.identity))return;
+  const el=track.attach();el.style.display="none";document.body.appendChild(el);
+  const w=talkWant.get(p.identity);
+  el.muted=!(w&&w.on);el.volume=1;
+  talkEls.set(p.identity,{el,track,room});
+  try{room.startAudio().then(updateIcStatus,()=>{})}catch{}
+}
+function talkDetach(identity){
+  const t=talkEls.get(identity);
+  if(t){try{t.track.detach(t.el)}catch{}t.el.remove();talkEls.delete(identity)}
+  const w=talkWant.get(identity);
+  if(w){clearTimeout(w.timer);w.on=false}
+  setTalkBanner();
+}
+function onTalkMsg(payload,p){
+  if(!p)return;
+  let m;try{m=JSON.parse(new TextDecoder().decode(payload))}catch{return}
+  if(!m)return;
+  const on=!!m.on&&(m.to===devSlug()||m.to==="*");
+  const prev=talkWant.get(p.identity);
+  if(prev)clearTimeout(prev.timer);
+  const w={on,name:String(m.from||p.name||"Guard").slice(0,40),timer:null};
+  if(on)w.timer=setTimeout(()=>{w.on=false;const t=talkEls.get(p.identity);if(t)t.el.muted=true;setTalkBanner()},120000);
+  talkWant.set(p.identity,w);
+  const t=talkEls.get(p.identity);
+  if(t)t.el.muted=!on;
+  setTalkBanner();
+}
+function wireIntercom(room){
+  const E=LivekitClient.RoomEvent;
+  room.on(E.TrackPublished,(pub,p)=>{if(isTalk(pub)&&hostRoom()===room)pub.setSubscribed(true)});
+  room.on(E.TrackSubscribed,(track,pub,p)=>{if(isTalk(pub)&&hostRoom()===room)talkAttach(room,track,p)});
+  room.on(E.TrackUnsubscribed,(track,pub,p)=>{if(isTalk(pub))talkDetach(p.identity)});
+  room.on(E.ParticipantDisconnected,p=>talkDetach(p.identity));
+  room.on(E.DataReceived,(payload,p,kind,topic)=>{if(topic==="intercom"&&hostRoom()===room)onTalkMsg(payload,p)});
+  room.on(E.AudioPlaybackStatusChanged,()=>updateIcStatus());
+}
+/* only one room per device plays the intercom, so nothing is heard twice */
+function rehost(){
+  const h=hostRoom();
+  for(const [id,t] of [...talkEls])if(t.room!==h)talkDetach(id);
+  if(!h)return;
+  h.remoteParticipants.forEach(p=>p.trackPublications.forEach(pub=>{
+    if(!isTalk(pub))return;
+    if(pub.isSubscribed&&pub.track)talkAttach(h,pub.track,p);
+    else pub.setSubscribed(true);
+  }));
+}
+function updateIcStatus(){
+  const h=hostRoom(),el=$("#icStatus");
+  if(!h){el.textContent="";return}
+  const ok=h.canPlaybackAudio;
+  el.className="status "+(ok?"ok":"err");
+  el.textContent=ok?"Intercom ready: guards can speak through this device's speaker.":"Intercom needs one click or tap on this page to enable the speaker.";
+}
+document.addEventListener("pointerdown",()=>{
+  cams.forEach(e=>{try{e.room.startAudio().then(updateIcStatus,()=>{})}catch{}});
+});
+
+/* ---------- sources ---------- */
+function persistDesired(){
+  store.set("resumeList",[...desired.values()].filter(s=>s.kind!=="screen").map(s=>({id:s.id,deviceId:s.deviceId,kind:s.kind,label:s.label})));
+}
+async function startSource(src){
   if(cams.has(src.id))return;
   needLK();
   const url=needUrl();
   const [W,H]=$("#qRes").value.split("x").map(Number);
   const fps=+$("#qFps").value;
-  let stream=null,micStream=null,stopTick=null,room=null;
+  const devName=$("#devName").value.trim()||"Device";
+  const label=`${devName} / ${src.label}`;
+  const identity=`${devSlug()}__${hashStr(src.id)}`;
+  let stream=null,stopTick=null,room=null;
   try{
-    if(src.kind==="screen")stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:fps},audio:false});
-    else stream=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:src.deviceId},width:{ideal:W},height:{ideal:H},frameRate:{ideal:fps}},audio:false});
-    const vid=document.createElement("video");
-    vid.muted=true;vid.playsInline=true;vid.srcObject=stream;
-    await vid.play();
-    const vw=vid.videoWidth||W,vh=vid.videoHeight||H;
-    const canvas=document.createElement("canvas");canvas.width=vw;canvas.height=vh;
-    const ctx=canvas.getContext("2d");
-    const devName=$("#devName").value.trim()||"Device";
-    const label=`${devName} / ${src.label}`;
-    drawFrame(ctx,vid,vw,vh,label);
-    stopTick=makeTicker(()=>drawFrame(ctx,vid,vw,vh,label),Math.round(1000/fps));
-    const cap=canvas.captureStream(fps);
-
-    const identity=(devName.toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,30)||"device")+"-"+hashStr(src.id);
-    const wm=wmFraction(label,vw,vh);
-    const token=await getToken(identity,label,true,wm?JSON.stringify({wm}):undefined);
-    room=new LivekitClient.Room();
-    await room.connect(url,token);
-    await room.localParticipant.publishTrack(cap.getVideoTracks()[0],{
-      name:src.label,source:LivekitClient.Track.Source.Unknown,
-      videoEncoding:{maxBitrate:H>=1080?4000000:H>=720?2000000:800000,maxFramerate:fps}
-    });
-    if(withMic&&$("#micSel").value){
-      try{
-        micStream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:{exact:$("#micSel").value}}});
-        await room.localParticipant.publishTrack(micStream.getAudioTracks()[0],{name:"mic",source:LivekitClient.Track.Source.Microphone});
-      }catch(e){console.warn("microphone failed",e)}
+    let canvas=null,cap=null,wm=null;
+    if(src.kind==="mic"){
+      stream=await navigator.mediaDevices.getUserMedia({audio:{
+        deviceId:{exact:src.deviceId},
+        echoCancellation:$("#aEcho").checked,noiseSuppression:$("#aNoise").checked,autoGainControl:$("#aAgc").checked
+      }});
+      const at=stream.getAudioTracks()[0];
+      if(!at||at.readyState!=="live")throw new Error("The microphone is not available");
+    }else{
+      if(src.kind==="screen")stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:fps},audio:false});
+      else stream=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:src.deviceId},width:{ideal:W},height:{ideal:H},frameRate:{ideal:fps}},audio:false});
+      const vid=document.createElement("video");
+      vid.muted=true;vid.playsInline=true;vid.srcObject=stream;
+      await vid.play();
+      const vw=vid.videoWidth||W,vh=vid.videoHeight||H;
+      canvas=document.createElement("canvas");canvas.width=vw;canvas.height=vh;
+      const ctx=canvas.getContext("2d");
+      drawFrame(ctx,vid,vw,vh,label);
+      stopTick=makeTicker(()=>drawFrame(ctx,vid,vw,vh,label),Math.round(1000/fps));
+      cap=canvas.captureStream(fps);
+      wm=wmFraction(label,vw,vh);
     }
-    src.mic=!!(withMic&&micStream);
+    const meta=JSON.stringify({dev:devSlug(),...(wm?{wm}:{})});
+    const token=await getToken(identity,label,true,meta);
+    room=new LivekitClient.Room();
+    wireIntercom(room);
+    await room.connect(url,token,{autoSubscribe:false});
+    if(src.kind==="mic"){
+      await room.localParticipant.publishTrack(stream.getAudioTracks()[0],{name:"mic",source:LivekitClient.Track.Source.Microphone,dtx:false});
+    }else{
+      await room.localParticipant.publishTrack(cap.getVideoTracks()[0],{
+        name:src.label,source:LivekitClient.Track.Source.Unknown,
+        videoEncoding:{maxBitrate:H>=1080?4000000:H>=720?2000000:800000,maxFramerate:fps}
+      });
+    }
 
     const tile=document.createElement("div");tile.className="tile";
-    tile.appendChild(canvas);
+    if(src.kind==="mic"){
+      tile.innerHTML='<div class="micview"><div class="micicon" aria-hidden="true">🎤</div><div class="meter"><i></i></div><div class="mtxt">Listening…</div></div>';
+      const bar=tile.querySelector(".meter i"),txt=tile.querySelector(".mtxt");
+      const track=stream.getAudioTracks()[0];
+      let lastSound=0,ever=false;const t0=Date.now();
+      stopTick=makeMeter(stream,lv=>{
+        const now=Date.now();
+        bar.style.width=Math.min(100,lv*350)+"%";
+        if(lv>.012){lastSound=now;ever=true}
+        txt.textContent=track.muted?"The device is muting this microphone"
+          :ever?(now-lastSound<2500?"Hearing sound":"Quiet")
+          :(now-t0>10000?"No sound detected yet. Check the mute switch and the selected microphone.":"Listening…");
+      });
+    }else tile.appendChild(canvas);
     const tag=document.createElement("div");tag.className="tag";
     tag.innerHTML=`<span class="dot live"></span><span>${esc(label)}</span>`;
     tile.appendChild(tag);
@@ -658,24 +796,29 @@ async function startSource(src,withMic){
     ctl.appendChild(sb);tile.appendChild(ctl);
     $("#camTiles").appendChild(tile);
 
-    cams.set(src.id,{room,stream,micStream,tile,stopTick,src});
+    cams.set(src.id,{room,stream,tile,stopTick,src});
     desired.set(src.id,src);persistDesired();
     room.on(LivekitClient.RoomEvent.Disconnected,()=>{
       if(!cams.has(src.id))return;
       stopSource(src.id,{fromDisc:true});scheduleRetry(src,5000);
     });
-    stream.getVideoTracks()[0].addEventListener("ended",()=>{
+    stream.getTracks()[0].addEventListener("ended",()=>{
       if(!cams.has(src.id))return;
       stopSource(src.id,{});scheduleRetry(src,5000);
     });
     const chk=$(`#vidList input[data-id="${src.id}"]`);if(chk)chk.checked=true;
+    rehost();updateIcStatus();
   }catch(e){
     try{stopTick&&stopTick()}catch{}
     try{stream&&stream.getTracks().forEach(t=>t.stop())}catch{}
-    try{micStream&&micStream.getTracks().forEach(t=>t.stop())}catch{}
     try{room&&room.disconnect()}catch{}
     throw e;
   }
+}
+function liveText(){
+  const mics=[...cams.values()].filter(e=>e.src.kind==="mic").length;
+  const n=cams.size-mics;
+  return `${n} camera(s)`+(mics?` and ${mics} microphone(s)`:"")+" live";
 }
 function stopSource(id,{manual,fromDisc}={}){
   const e=cams.get(id);
@@ -684,18 +827,18 @@ function stopSource(id,{manual,fromDisc}={}){
   cams.delete(id);
   try{e.stopTick()}catch{}
   e.stream.getTracks().forEach(t=>t.stop());
-  if(e.micStream)e.micStream.getTracks().forEach(t=>t.stop());
   if(!fromDisc)try{e.room.disconnect()}catch{}
   e.tile.remove();
   if(manual){const chk=$(`#vidList input[data-id="${id}"]`);if(chk)chk.checked=false}
   if(!cams.size)releaseWake();
-  setStatus($("#camStatus"),cams.size?`${cams.size} camera(s) live`:(desired.size?"Connection lost, retrying…":"Stopped"),cams.size?"ok":"");
+  rehost();updateIcStatus();
+  setStatus($("#camStatus"),cams.size?liveText():(desired.size?"Connection lost, retrying…":"Stopped"),cams.size?"ok":"");
 }
 function scheduleRetry(src,delay){
   if(src.kind==="screen")return;
   setTimeout(async()=>{
     if(!desired.has(src.id)||cams.has(src.id))return;
-    try{await startSource(src,src.mic);requestWake();setStatus($("#camStatus"),`${cams.size} camera(s) live`,"ok")}
+    try{await startSource(src);requestWake();setStatus($("#camStatus"),liveText(),"ok")}
     catch{scheduleRetry(src,10000)}
   },delay);
 }
@@ -707,31 +850,30 @@ document.addEventListener("visibilitychange",()=>{if(document.visibilityState===
 
 $("#startCams").onclick=async()=>{
   const rows=$$("#vidList .dev").filter(r=>r.querySelector("input").checked);
-  if(!rows.length){setStatus($("#camStatus"),"Tick at least one input.","err");return}
+  if(!rows.length){setStatus($("#camStatus"),"Tick at least one camera or microphone.","err");return}
   saveCfg();setStatus($("#camStatus"),"Starting…");
-  let first=!cams.size;const errs=[];
+  const errs=[];
   for(const r of rows){
-    try{await startSource(r._src,first);first=false}
+    try{await startSource(r._src)}
     catch(e){errs.push(`${r._src.label}: ${e.message||e}`)}
   }
   if(cams.size)requestWake();
-  setStatus($("#camStatus"),errs.length?errs.join(" | "):`${cams.size} camera(s) live`,errs.length?"err":"ok");
+  setStatus($("#camStatus"),errs.length?errs.join(" | "):liveText(),errs.length?"err":"ok");
 };
 $("#stopCams").onclick=()=>{[...desired.keys(),...cams.keys()].forEach(id=>stopSource(id,{manual:true}))};
 
-/* auto-restart saved cameras on page open */
+/* auto-restart saved sources on page open */
 async function resumeCameras(){
   const list=store.get("resumeList",[]);
   if(!list.length||!$("#resume").checked)return;
   const t0=Date.now();
   while(!window.LivekitClient&&!window.__lkFail&&Date.now()-t0<10000)await new Promise(r=>setTimeout(r,200));
-  setStatus($("#camStatus"),"Restarting saved cameras…");
-  let first=true;
+  setStatus($("#camStatus"),"Restarting saved cameras and microphones…");
   for(const s of list){
-    try{await startSource({...s},first&&s.mic);first=false}
+    try{await startSource({...s})}
     catch(e){desired.set(s.id,s);scheduleRetry(s,10000);setStatus($("#camStatus"),`${s.label}: ${e.message||e}`,"err")}
   }
-  if(cams.size){requestWake();setStatus($("#camStatus"),`${cams.size} camera(s) live`,"ok")}
+  if(cams.size){requestWake();setStatus($("#camStatus"),liveText(),"ok")}
 }
 
 /* ---------- low-profile cover ---------- */
@@ -769,6 +911,8 @@ let vroom=null,viewerManualStop=false,viewerRetry=null;
 const vtiles=new Map();    // track sid -> {tile,track,s}
 const states=new Map();    // participant identity -> camera state
 const alarms=new Map();    // "type:id" -> {type,id,name,since}
+const devKey=id=>String(id).split("__")[0];
+const devAudio=new Map(),listening=new Set(),audioTiles=new Map(),speakingLevels=new Map();
 let logs=store.get("log",[]);
 const fmt=ms=>{const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+":"+pad(s%60)};
 
@@ -796,7 +940,7 @@ function audioInit(){
     if(AC.state==="suspended")AC.resume();
   }catch{}
 }
-document.addEventListener("pointerdown",audioInit);
+document.addEventListener("pointerdown",()=>{audioInit();try{vroom&&vroom.startAudio()}catch{}});
 function beep(freq,dur,delay,type,gain){
   if(!AC||$("#gMute").checked)return;
   const t=AC.currentTime+delay,o=AC.createOscillator(),g=AC.createGain(),v=gain||.25;
@@ -951,7 +1095,7 @@ function monitorTick(){
 makeTicker(monitorTick,250);
 
 /* ---------- guard mode ---------- */
-const G={on:false,focus:null,lastSwitch:0,pinned:null,pinUntil:0};
+const G={on:false,focus:null,lastSwitch:0,pinned:null,pinUntil:0,lastListen:null};
 function guardTick(now){
   const bar=$("#guardBar");
   if(!G.on){bar.style.display="none";return}
@@ -977,6 +1121,11 @@ function guardTick(now){
   else sel=pick(list);
   G.focus=sel.id;
   list.forEach(s=>s.tile.classList.toggle("focus",s===sel));
+  $("#talkBtn").textContent="Hold to talk to "+sel.name;
+  if($("#gListen").checked&&G.lastListen!==sel.dev){
+    if(G.lastListen)listenSet(G.lastListen,false);
+    listenSet(sel.dev,true);G.lastListen=sel.dev;
+  }
   const left=Math.max(0,Math.ceil((dwell-(now-G.lastSwitch))/1000));
   const label={alarm:"NO MOVEMENT",motion:"MOTION",pinned:"PINNED",patrol:"PATROL"}[reason];
   bar.className="gbar "+(reason==="alarm"?"alarm":reason==="motion"?"motion":"");
@@ -1010,7 +1159,7 @@ function applyCols(){$("#vwTiles").style.setProperty("--cols",$("#vwCols").value
 $("#vwCols").onchange=applyCols;applyCols();
 function refreshCount(){
   $("#vwCount").textContent=vtiles.size;
-  $("#vwEmpty").style.display=vtiles.size?"none":"block";
+  $("#vwEmpty").style.display=(vtiles.size||audioTiles.size)?"none":"block";
 }
 
 /* ---------- tiles ---------- */
@@ -1029,13 +1178,13 @@ function addViewTile(track,pub,participant){
   if($("#vwWmSel").value==="on")wm.style.backgroundImage=wmPattern(viewerWmText());
   tile.appendChild(wm);
   const tag=document.createElement("div");tag.className="tag";
-  tag.innerHTML=`<span class="dot live"></span><span class="nm1">${esc(name)}</span><span class="mstat"></span>`;
+  tag.innerHTML=`<span class="dot live"></span><span class="nm1">${esc(name)}</span><span class="mstat"></span><span class="snd"></span>`;
   tile.appendChild(tag);
 
   let wmRect=null;
   try{const md=JSON.parse(participant.metadata||"{}");if(Array.isArray(md.wm))wmRect=md.wm}catch{}
   const now=Date.now();
-  const s={id,name,cfg,video:v,tile,wm:wmRect,mstat:tag.querySelector(".mstat"),
+  const s={id,name,dev:devKey(id),cfg,video:v,tile,wm:wmRect,mstat:tag.querySelector(".mstat"),snd:tag.querySelector(".snd"),
     prev:null,prevMean:0,streak:0,lastMotion:0,armedAt:now,lastSound:0,lastCT:-1,lastFrameAt:now,
     stalled:false,ratio:0,need:0,diffMask:new Uint8Array(AN),ignoreMask:null};
   buildIgnore(s);
@@ -1101,15 +1250,9 @@ function addViewTile(track,pub,participant){
     };
     rec.start(1000);b.textContent="Stop rec";b.classList.add("on");
   });
-  const audioPub=[...participant.trackPublications.values()].find(p=>p.kind==="audio");
-  if(audioPub){
-    let el=null;
-    mk("Listen",b=>{
-      const at=audioPub.track;if(!at)return;
-      if(el){at.detach(el);el.remove();el=null;b.classList.remove("on");b.textContent="Listen"}
-      else{el=at.attach();document.body.appendChild(el);b.classList.add("on");b.textContent="Mute"}
-    });
-  }
+  s.listenBtn=mk("No audio",()=>listenSet(s.dev,!isListening(s.dev)));
+  s.listenBtn.disabled=true;
+  mkTalkBtn(ctl,()=>({dev:s.dev,name:s.name}));
   tile.appendChild(ctl);
 
   /* in guard mode, tapping a thumbnail pins it for 30 seconds */
@@ -1120,6 +1263,7 @@ function addViewTile(track,pub,participant){
   $("#vwTiles").appendChild(tile);
   vtiles.set(track.sid,{tile,track,s});
   states.set(id,s);
+  dropAudioTile(s.dev);updateListenBtns(s.dev);
   refreshCount();
 }
 function removeViewTile(sid,silent){
@@ -1140,6 +1284,186 @@ function removeViewTile(sid,silent){
   refreshCount();
 }
 
+/* ---------- listening to device microphones ---------- */
+function applyListen(key){
+  const m=devAudio.get(key);
+  const on=listening.has(key);
+  if(m)m.forEach(a=>{
+    if(on&&!a.el){
+      a.el=a.track.attach();a.el.style.display="none";a.el.volume=1;
+      document.body.appendChild(a.el);
+      try{const pr=a.el.play();if(pr&&pr.catch)pr.catch(()=>{})}catch{}
+    }else if(!on&&a.el){
+      try{a.track.detach(a.el)}catch{}
+      a.el.remove();a.el=null;
+    }
+  });
+  updateListenBtns(key);
+}
+function listenSet(key,on){if(on)listening.add(key);else listening.delete(key);applyListen(key)}
+function isListening(key){return listening.has(key)}
+function updateListenBtns(key){
+  const m=devAudio.get(key),has=!!m&&m.size>0,on=listening.has(key)&&has;
+  states.forEach(s=>{
+    if(s.dev!==key||!s.listenBtn)return;
+    s.listenBtn.disabled=!has;
+    s.listenBtn.textContent=!has?"No audio":on?"Mute":"Listen";
+    s.listenBtn.classList.toggle("on",on);
+  });
+  const a=audioTiles.get(key);
+  if(a){a.btn.textContent=on?"Mute":"Listen";a.btn.classList.toggle("on",on)}
+}
+function addAudioTile(key,name){
+  if(audioTiles.has(key))return;
+  const tile=document.createElement("div");tile.className="tile";
+  tile.innerHTML=`<div class="micview"><div class="micicon" aria-hidden="true">🎤</div><div class="meter"><i></i></div></div><div class="tag"><span class="dot live"></span><span>${esc(name)}</span><span class="snd"></span></div>`;
+  const ctl=document.createElement("div");ctl.className="ctl";
+  const lb=document.createElement("button");lb.textContent="Listen";
+  lb.onclick=ev=>{ev.stopPropagation();listenSet(key,!isListening(key))};
+  ctl.appendChild(lb);
+  mkTalkBtn(ctl,()=>({dev:key,name}));
+  tile.appendChild(ctl);
+  $("#vwTiles").appendChild(tile);
+  audioTiles.set(key,{tile,btn:lb,meter:tile.querySelector(".meter i"),snd:tile.querySelector(".snd")});
+  refreshCount();
+}
+function dropAudioTile(key){
+  const a=audioTiles.get(key);
+  if(a){a.tile.remove();audioTiles.delete(key);refreshCount()}
+}
+function addDevAudio(track,p,room){
+  const key=devKey(p.identity);
+  if(!devAudio.has(key))devAudio.set(key,new Map());
+  devAudio.get(key).set(track.sid,{track,el:null});
+  const hasCam=[...room.remoteParticipants.values()].some(q=>devKey(q.identity)===key&&[...q.trackPublications.values()].some(x=>x.kind==="video"));
+  if(!hasCam)addAudioTile(key,(p.name||key).replace(/\s*\/\s*Mic.*$/i,"")+" (audio)");
+  applyListen(key);
+}
+function removeDevAudio(track,p){
+  const key=devKey(p.identity),m=devAudio.get(key);
+  if(!m)return;
+  const a=m.get(track.sid);
+  if(a&&a.el){try{track.detach(a.el)}catch{}a.el.remove()}
+  m.delete(track.sid);
+  if(!m.size){devAudio.delete(key);dropAudioTile(key)}
+  updateListenBtns(key);
+}
+function updateSnd(){
+  states.forEach(s=>{s.snd.textContent=speakingLevels.has(s.dev)?"🔊":""});
+  audioTiles.forEach((a,key)=>{
+    const lv=speakingLevels.get(key);
+    a.meter.style.width=lv===undefined?"0%":Math.min(100,Math.max(12,lv*140))+"%";
+    a.snd.textContent=lv===undefined?"":"🔊";
+  });
+}
+function clearAudio(){
+  devAudio.forEach(m=>m.forEach(a=>{if(a.el){try{a.track.detach(a.el)}catch{}a.el.remove()}}));
+  devAudio.clear();
+  [...audioTiles.keys()].forEach(dropAudioTile);
+  speakingLevels.clear();
+  resetTalk();
+}
+
+/* ---------- intercom (push to talk) ---------- */
+const TK={track:null,want:false,live:false,target:null,btn:null,idle:null};
+function talkBtnsOff(){$$(".talkbtn.on").forEach(b=>b.classList.remove("on"))}
+function sendTalk(on,to){
+  try{
+    if(!vroom)return;
+    const msg=JSON.stringify({on,to,from:$("#vwName").value.trim()||"Guard"});
+    const pr=vroom.localParticipant.publishData(new TextEncoder().encode(msg),{reliable:true,topic:"intercom"});
+    if(pr&&pr.catch)pr.catch(()=>{});
+  }catch{}
+}
+async function startTalk(dev,name,btn){
+  if(TK.want)return;
+  TK.want=true;TK.target=dev;TK.btn=btn;clearTimeout(TK.idle);
+  if(btn&&btn.classList)btn.classList.add("on");
+  setStatus($("#vwStatus"),`Talking to ${name}…`,"ok");
+  try{
+    const lp=vroom.localParticipant;
+    if(lp.permissions&&lp.permissions.canPublish===false)throw new Error("this link is view-only. Create the viewer link with talking enabled.");
+    if(!TK.track){
+      const t=await LivekitClient.createLocalAudioTrack({echoCancellation:true,noiseSuppression:true,autoGainControl:true});
+      try{await lp.publishTrack(t,{name:"talk",source:LivekitClient.Track.Source.Microphone})}
+      catch(e){try{t.stop()}catch{}throw e}
+      TK.track=t;
+    }
+    if(!TK.want){await TK.track.mute();return}
+    await TK.track.unmute();
+    TK.live=true;
+    sendTalk(true,dev);
+  }catch(e){
+    TK.want=false;TK.live=false;talkBtnsOff();
+    setStatus($("#vwStatus"),"Intercom failed: "+(e.message||e),"err");
+  }
+}
+async function stopTalk(){
+  if(!TK.want&&!TK.live)return;
+  const to=TK.target;
+  TK.want=false;TK.live=false;talkBtnsOff();
+  sendTalk(false,to);
+  if(TK.track){try{await TK.track.mute()}catch{}}
+  clearTimeout(TK.idle);
+  TK.idle=setTimeout(async()=>{
+    if(TK.track&&!TK.want){
+      try{await vroom.localParticipant.unpublishTrack(TK.track,true)}catch{}
+      TK.track=null;
+    }
+  },20000);
+  if(vroom)setStatus($("#vwStatus"),`Connected to room "${vroom.name}"`,"ok");
+}
+function resetTalk(){
+  clearTimeout(TK.idle);
+  if(TK.track){try{TK.track.stop()}catch{}}
+  TK.track=null;TK.want=false;TK.live=false;talkBtnsOff();
+}
+function pressTalk(btn,getT){
+  if(!vroom){setStatus($("#vwStatus"),"Connect first to use the intercom.","err");return}
+  const t=getT();
+  if(!t||!t.dev){setStatus($("#vwStatus"),"Turn on guard mode, or use the Talk button on a camera.","err");return}
+  audioInit();
+  if($("#talkLatch").checked&&btn!=="key"){
+    if(TK.want&&TK.target===t.dev){stopTalk();return}
+    if(TK.want)stopTalk();
+  }
+  startTalk(t.dev,t.name,btn);
+}
+function releaseTalk(btn){
+  if($("#talkLatch").checked&&btn!=="key")return;
+  if(TK.want&&TK.btn===btn)stopTalk();
+}
+function wireTalk(b,getT){
+  b.classList.add("talkbtn");
+  b.title="Hold to talk (intercom)";
+  b.addEventListener("pointerdown",ev=>{ev.preventDefault();ev.stopPropagation();pressTalk(b,getT)});
+  const up=ev=>{ev.stopPropagation();releaseTalk(b)};
+  b.addEventListener("pointerup",up);
+  b.addEventListener("pointercancel",up);
+  b.addEventListener("pointerleave",up);
+  b.addEventListener("click",ev=>ev.stopPropagation());
+  b.addEventListener("contextmenu",ev=>ev.preventDefault());
+  return b;
+}
+function mkTalkBtn(container,getT){
+  const b=document.createElement("button");b.textContent="Talk";
+  wireTalk(b,getT);container.appendChild(b);return b;
+}
+wireTalk($("#talkBtn"),()=>{const s=states.get(G.focus);return s?{dev:s.dev,name:s.name}:null});
+wireTalk($("#talkAll"),()=>({dev:"*",name:"all cameras"}));
+/* hold Space in guard mode to talk to the focused camera */
+document.addEventListener("keydown",e=>{
+  if(e.code!=="Space"||e.repeat||!G.on||!$("#tab-view").classList.contains("on"))return;
+  const tg=e.target&&e.target.tagName;
+  if(["INPUT","SELECT","TEXTAREA","BUTTON"].includes(tg))return;
+  const s=states.get(G.focus);if(!s)return;
+  e.preventDefault();
+  pressTalk("key",()=>({dev:s.dev,name:s.name}));
+});
+document.addEventListener("keyup",e=>{
+  if(e.code==="Space"&&TK.want&&TK.btn==="key")stopTalk();
+});
+
 /* ---------- connection ---------- */
 async function connectViewer(){
   const st=$("#vwStatus");
@@ -1148,13 +1472,26 @@ async function connectViewer(){
     needLK();const url=needUrl();saveCfg();audioInit();
     if(vroom){viewerManualStop=true;await vroom.disconnect();vroom=null;viewerManualStop=false}
     setStatus(st,"Connecting…");
-    const token=await getToken("viewer-"+rand(),$("#vwName").value.trim()||"Viewer",false);
+    const token=await getToken("viewer-"+rand(),$("#vwName").value.trim()||"Viewer",false,undefined,true);
     const E=LivekitClient.RoomEvent;
     const room=new LivekitClient.Room({adaptiveStream:true,dynacast:true});
-    room.on(E.TrackSubscribed,(track,pub,p)=>{if(track.kind==="video")addViewTile(track,pub,p)});
-    room.on(E.TrackUnsubscribed,track=>removeViewTile(track.sid));
+    room.on(E.TrackSubscribed,(track,pub,p)=>{
+      if(track.kind==="video")addViewTile(track,pub,p);
+      else if(track.kind==="audio"&&pub.trackName!=="talk")addDevAudio(track,p,room);
+    });
+    room.on(E.TrackUnsubscribed,(track,pub,p)=>{
+      if(track.kind==="video")removeViewTile(track.sid);
+      else if(track.kind==="audio")removeDevAudio(track,p);
+    });
+    room.on(E.ActiveSpeakersChanged,sp=>{
+      speakingLevels.clear();
+      sp.forEach(q=>{const k=devKey(q.identity);speakingLevels.set(k,Math.max(speakingLevels.get(k)||0,q.audioLevel||.2))});
+      updateSnd();
+    });
+    room.on(E.AudioPlaybackStatusChanged,()=>{if(!room.canPlaybackAudio)setStatus(st,"Click or tap the page once to enable sound.","err")});
     room.on(E.Disconnected,()=>{
       [...vtiles.keys()].forEach(k=>removeViewTile(k,true));
+      clearAudio();
       if(viewerManualStop)return;
       setStatus(st,"Disconnected, retrying…","err");
       if(!alarms.has("link:self")){
@@ -1167,6 +1504,7 @@ async function connectViewer(){
     room.on(E.Reconnected,()=>setStatus(st,"Connected","ok"));
     await room.connect(url,token);
     vroom=room;
+    try{room.startAudio()}catch{}
     if(alarms.delete("link:self")){log("ok","This viewer","Connection restored");renderAlarms()}
     setStatus(st,`Connected to room "${room.name}"`,"ok");
   }catch(e){
@@ -1179,6 +1517,7 @@ $("#vwDisconnect").onclick=async()=>{
   clearTimeout(viewerRetry);viewerManualStop=true;
   if(vroom){await vroom.disconnect();vroom=null}
   [...vtiles.keys()].forEach(k=>removeViewTile(k,true));
+  clearAudio();
   alarms.delete("link:self");renderAlarms();
   setStatus($("#vwStatus"),"Disconnected");
 };
