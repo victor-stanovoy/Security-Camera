@@ -268,6 +268,7 @@ details summary{cursor:pointer;color:var(--dim)}
     </div>
     <div class="row" style="margin-top:10px">
       <label class="inl"><input type="checkbox" id="gMute"> Mute alarms</label>
+      <label class="inl"><input type="checkbox" id="armed"> Armed (sounds and desktop alerts)</label>
       <label class="inl">Volume <input type="range" id="gVol" min="10" max="100" style="width:120px"></label>
       <button class="btn" id="testSound">Test alarm sound</button>
     </div>
@@ -333,7 +334,7 @@ function setStatus(el,msg,cls){el.textContent=msg;el.className="status "+(cls||"
 /* ---------- config ---------- */
 const defaults={lkUrl:"",lkRoom:"home",lkKey:"",lkSecret:"",lkToken:"",devName:"Device",appBase:"",
   qRes:"1280x720",qFps:"15",wmText:"",wmPos:"bl",wmOp:"70",wmTime:true,wmName:true,wmTile:false,resume:false,
-  cvKind:"black",cvTitle:"Untitled document",vwName:"",vwCols:"2",vwWmSel:"on",autoView:false,micSel:"",gDwell:"10",gHold:"10",gMute:false,gVol:"70",aEcho:true,aNoise:false,aAgc:true,linkTalk:true,gListen:false,talkLatch:false};
+  cvKind:"black",cvTitle:"Untitled document",vwName:"",vwCols:"2",vwWmSel:"on",autoView:false,micSel:"",gDwell:"10",gHold:"10",gMute:false,gVol:"70",aEcho:true,aNoise:false,aAgc:true,linkTalk:true,gListen:false,talkLatch:false,armed:true};
 function loadCfg(){
   for(const [k,d] of Object.entries(defaults)){
     const el=$("#"+k);if(!el)continue;
@@ -917,16 +918,24 @@ let logs=store.get("log",[]);
 const fmt=ms=>{const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+":"+pad(s%60)};
 
 /* ---------- event log ---------- */
-function log(type,who,msg){
+function log(type,who,msg,img){
   const name=typeof who==="string"?who:who.name;
-  logs.unshift({t:Date.now(),type,name,msg});
+  logs.unshift({t:Date.now(),type,name,msg,img});
   if(logs.length>200)logs.pop();
-  store.set("log",logs.slice(0,100));
+  store.set("log",logs.slice(0,100).map(({img,...r})=>r));
   renderLog();
+}
+function snap(s){
+  try{const v=s.video;if(!v.videoWidth)return;const c=document.createElement("canvas");c.width=320;c.height=Math.round(320*v.videoHeight/v.videoWidth);
+    c.getContext("2d").drawImage(v,0,0,c.width,c.height);return c.toDataURL("image/jpeg",.6)}catch{}
+}
+function notify(msg){
+  try{if(!$("#armed").checked||document.visibilityState==="visible"||!("Notification" in window)||Notification.permission!=="granted")return;
+    new Notification("SecureCam",{body:msg,tag:"securecam"})}catch{}
 }
 function renderLog(){
   $("#logN").textContent=logs.length;
-  $("#logList").innerHTML=logs.slice(0,100).map(l=>`<div>${esc(stamp(new Date(l.t)))} · ${esc(l.name)} · ${esc(l.msg)}</div>`).join("");
+  $("#logList").innerHTML=logs.slice(0,100).map(l=>`<div>${esc(stamp(new Date(l.t)))} · ${esc(l.name)} · ${esc(l.msg)}${l.img?`<br><a href="${l.img}" download="event.jpg"><img src="${l.img}" style="width:160px;border-radius:3px;margin-top:3px" alt="Snapshot"></a>`:""}</div>`).join("");
 }
 $("#logClear").onclick=()=>{logs=[];store.set("log",[]);renderLog()};
 renderLog();
@@ -953,14 +962,17 @@ const sounds={
   motion(){beep(880,.12,0);beep(1320,.16,.15)},
   nomove(){for(let i=0;i<4;i++)beep(i%2?660:990,.25,i*.28,"sawtooth",.3)},
   offline(){beep(330,.45,0,"sawtooth",.3);beep(247,.6,.55,"sawtooth",.3)},
-  link(){beep(440,.3,0,"square");beep(440,.3,.4,"square")}
+  link(){beep(440,.3,0,"square");beep(440,.3,.4,"square")},
+  test(){sounds.nomove()}
 };
 function play(type){
+  if(!$("#armed").checked&&type!=="test")return;
   audioInit();(sounds[type]||sounds.motion)();
   try{navigator.vibrate&&navigator.vibrate(type==="motion"?[120]:[300,120,300])}catch{}
 }
 $("#gVol").addEventListener("input",()=>{if(master)master.gain.value=(+$("#gVol").value)/100});
-$("#testSound").onclick=()=>play("nomove");
+$("#armed").addEventListener("change",e=>{if(e.target.checked&&"Notification" in window&&Notification.permission==="default")Notification.requestPermission()});
+$("#testSound").onclick=()=>play("test");
 
 /* ---------- per-camera settings ---------- */
 const camDefaults={mode:"off",sens:6,noMoveSec:60,ignore:"auto",alias:""};
@@ -995,15 +1007,19 @@ function analyse(s,now){
   const g=new Uint8Array(AN);let sum=0;
   for(let i=0,j=0;i<AN;i++,j+=4){const y=(d[j]*77+d[j+1]*150+d[j+2]*29)>>8;g[i]=y;sum+=y}
   const mean=sum/AN;
-  if(!s.prev){s.prev=g;s.prevMean=mean;s.armedAt=now;return}
+  if(!s.prev){s.prev=g;s.prevMean=mean;s.bg=Float32Array.from(g);s.bgMean=mean;s.armedAt=now;return}
   const shift=mean-s.prevMean,thr=34-2*s.cfg.sens;
-  let ch=0,cnt=0;const mask=s.diffMask;
+  let ch=0,cnt=0;const mask=s.diffMask,bg=s.bg,sb=mean-s.bgMean;
   for(let i=0;i<AN;i++){
-    if(s.ignoreMask[i]){mask[i]=0;continue}
+    if(s.ignoreMask[i]){mask[i]=0;bg[i]=g[i];continue}
     cnt++;
-    if(Math.abs(g[i]-s.prev[i]-shift)>thr){ch++;mask[i]=1}else mask[i]=0;
+    const hit=Math.abs(g[i]-bg[i]-sb)>thr||Math.abs(g[i]-s.prev[i]-shift)>thr;
+    if(hit){ch++;mask[i]=1}else mask[i]=0;
+    bg[i]+=(g[i]-bg[i])*(hit?.01:.08);
   }
+  s.bgMean+=(mean-s.bgMean)*.08;
   s.prev=g;s.prevMean=mean;
+  s.score=s.score*.8+(cnt?ch/cnt:0)*.2;
   s.ratio=cnt?ch/cnt:0;
   s.need=0.06*Math.pow(.7,s.cfg.sens-1);
   s.streak=s.ratio>=s.need?s.streak+1:0;
@@ -1017,7 +1033,7 @@ function onMotion(s,now){
     return;
   }
   if(!was){
-    log("motion",s,"Motion detected");
+    log("motion",s,"Motion detected",snap(s));notify(s.name+": motion detected");
     if(now-s.lastSound>8000){s.lastSound=now;play("motion")}
   }
 }
@@ -1072,8 +1088,8 @@ function monitorTick(){
       const ref=Math.max(s.lastMotion,s.armedAt);
       if(!alarms.has("nomove:"+s.id)&&now-ref>s.cfg.noMoveSec*1000){
         alarms.set("nomove:"+s.id,{type:"nomove",id:s.id,name:s.name,since:now});
-        log("alarm",s,`No movement for ${s.cfg.noMoveSec}s`);
-        play("nomove");renderAlarms();
+        log("alarm",s,`No movement for ${s.cfg.noMoveSec}s`,snap(s));
+        play("nomove");notify("NO MOVEMENT: "+s.name);renderAlarms();
       }
     }
     s.tile.classList.toggle("mot",mode==="alert"&&now-s.lastMotion<2500);
@@ -1117,7 +1133,12 @@ function guardTick(now){
   let sel,reason="patrol";
   if(alarmed.length){sel=pick(alarmed);reason="alarm"}
   else if(pinned){sel=pinned;reason="pinned";if(G.focus!==pinned.id)G.lastSwitch=now}
-  else if(moving.length){sel=pick(moving);reason="motion"}
+  else if(moving.length){
+    const top=moving.reduce((a,b)=>b.score>a.score?b:a),cur=moving.find(x=>x.id===G.focus);
+    sel=cur&&(now-G.lastSwitch<3000||top.score<cur.score*1.5)?cur:top;
+    if(sel.id!==G.focus)G.lastSwitch=now;
+    reason="motion";
+  }
   else sel=pick(list);
   G.focus=sel.id;
   list.forEach(s=>s.tile.classList.toggle("focus",s===sel));
@@ -1185,7 +1206,7 @@ function addViewTile(track,pub,participant){
   try{const md=JSON.parse(participant.metadata||"{}");if(Array.isArray(md.wm))wmRect=md.wm}catch{}
   const now=Date.now();
   const s={id,name,dev:devKey(id),cfg,video:v,tile,wm:wmRect,mstat:tag.querySelector(".mstat"),snd:tag.querySelector(".snd"),
-    prev:null,prevMean:0,streak:0,lastMotion:0,armedAt:now,lastSound:0,lastCT:-1,lastFrameAt:now,
+    prev:null,prevMean:0,streak:0,lastMotion:0,armedAt:now,lastSound:0,lastNoise:0,score:0,lastCT:-1,lastFrameAt:now,
     stalled:false,ratio:0,need:0,diffMask:new Uint8Array(AN),ignoreMask:null};
   buildIgnore(s);
 
@@ -1204,6 +1225,7 @@ function addViewTile(track,pub,participant){
     <label style="margin-top:8px">Must move: alarm after this many seconds without movement</label><input type="number" class="nm" min="5" max="3600" value="${cfg.noMoveSec}">
     <label style="margin-top:8px">Ignore the camera's burned-in timestamp</label>
     <select class="ign"><option value="auto">Automatic</option><option value="none">Do not ignore</option><option value="tl">Top left</option><option value="tr">Top right</option><option value="bl">Bottom left</option><option value="br">Bottom right</option></select>
+    <label style="margin-top:8px"><input type="checkbox" class="sndal"${cfg.sndAlert?" checked":""}> Alert on loud sound</label>
     <canvas class="dbg" width="${AW}" height="${AH}" style="width:100%;margin-top:8px;background:#000;border-radius:3px"></canvas><div class="dbgt mono"></div>`;
   tile.appendChild(pop);
   s.pop=pop;s.dbg=pop.querySelector(".dbg");s.dbgText=pop.querySelector(".dbgt");
@@ -1219,6 +1241,7 @@ function addViewTile(track,pub,participant){
   };
   pop.querySelector(".sens").oninput=e=>{s.cfg.sens=+e.target.value;pop.querySelector(".sv").textContent=e.target.value;save()};
   pop.querySelector(".nm").onchange=e=>{s.cfg.noMoveSec=Math.min(3600,Math.max(5,+e.target.value||60));e.target.value=s.cfg.noMoveSec;save();s.armedAt=Date.now()};
+  pop.querySelector(".sndal").onchange=e=>{s.cfg.sndAlert=e.target.checked;save()};
   pop.querySelector(".ign").onchange=e=>{s.cfg.ignore=e.target.value;save();buildIgnore(s);reset()};
 
   /* controls */
@@ -1349,7 +1372,11 @@ function removeDevAudio(track,p){
   updateListenBtns(key);
 }
 function updateSnd(){
-  states.forEach(s=>{s.snd.textContent=speakingLevels.has(s.dev)?"🔊":""});
+  states.forEach(s=>{
+    const lv=speakingLevels.get(s.dev),now=Date.now();
+    s.snd.textContent=lv!==undefined?"🔊":"";
+    if(lv!==undefined&&s.cfg.sndAlert&&lv>.25&&now-s.lastNoise>10000){s.lastNoise=now;log("sound",s,"Loud sound",snap(s));play("motion");notify(s.name+": loud sound")}
+  });
   audioTiles.forEach((a,key)=>{
     const lv=speakingLevels.get(key);
     a.meter.style.width=lv===undefined?"0%":Math.min(100,Math.max(12,lv*140))+"%";
